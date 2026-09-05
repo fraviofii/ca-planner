@@ -1,0 +1,19 @@
+# dependências e build
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# banco de dados local — dados financeiros, nunca versionar
+data/*.db
+data/*.db-journal
+data/.secret-key
+
+# credenciais
+.env
+.env.local
+
+# sistema
+.DS_Store

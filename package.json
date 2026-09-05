@@ -1,0 +1,44 @@
+{
+  "name": "ca-planner",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "description": "Gestão de finanças pessoais: coleta lançamentos bancários via Pluggy (Open Finance), guarda em SQLite e permite categorizar.",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "electron:dev": "concurrently -k -n next,electron -c blue,green \"next dev\" \"wait-on http://localhost:3000 && cross-env NEXT_DEV_URL=http://localhost:3000 electron .\"",
+    "electron": "next build && electron .",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "import:json": "tsx scripts/import-json.ts",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "dotenv": "^17.4.2",
+    "next": "^15.5.25",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.0",
+    "concurrently": "^10.0.5",
+    "cross-env": "^7.0.3",
+    "electron": "^44.2.0",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.0",
+    "wait-on": "^9.1.0"
+  }
+}

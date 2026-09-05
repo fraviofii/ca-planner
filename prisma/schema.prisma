@@ -1,0 +1,105 @@
+// Esquema do CA Planner.
+// Valores monetários são guardados em centavos (Int), com sinal:
+// negativo = dinheiro saiu, positivo = dinheiro entrou — para qualquer tipo de conta.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Uma conexão banco↔usuário na Pluggy (um "item"). Um item pode ter várias contas.
+model Connection {
+  id         String    @id @default(cuid())
+  provider   String    @default("pluggy")
+  itemId     String    @unique
+  nickname   String
+  status     String?   // último status reportado pela Pluggy (UPDATED, OUTDATED, LOGIN_ERROR...)
+  lastSyncAt DateTime?
+  lastError  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  accounts Account[]
+}
+
+/// Conta corrente, poupança ou cartão dentro de uma conexão.
+model Account {
+  id           String      @id @default(cuid())
+  externalId   String      @unique // accountId da Pluggy
+  connectionId String?
+  connection   Connection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  name         String
+  bankName     String?
+  type         String      @default("BANK") // BANK | CREDIT
+  subtype      String?
+  number       String?
+  currency     String      @default("BRL")
+  balanceCents Int?
+  ignored      Boolean     @default(false) // não sincronizar nem mostrar por padrão
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  transactions Transaction[]
+}
+
+model CategoryGroup {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  categories Category[]
+}
+
+model Category {
+  id        String        @id @default(cuid())
+  name      String
+  groupId   String
+  group     CategoryGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  transactions Transaction[]
+
+  @@unique([groupId, name])
+}
+
+model Transaction {
+  id               String    @id @default(cuid())
+  externalId       String    @unique // id da transação na Pluggy
+  accountId        String
+  account          Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date             DateTime  // meia-noite UTC do dia contábil
+  amountCents      Int       // com sinal: negativo = saiu dinheiro
+  description      String
+  counterparty     String?
+  providerCategory String?   // categoria sugerida pela Pluggy — só dica, nunca decide
+  providerType     String?   // DEBIT | CREDIT
+  status           String?   // POSTED | PENDING
+  categoryId       String?
+  category         Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  isTransfer       Boolean   @default(false) // transferência entre contas próprias: fora dos totais
+  notes            String?
+  raw              String?   // JSON original, para auditoria
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([date])
+  @@index([accountId, date])
+  @@index([categoryId])
+}
+
+/// Configurações da aplicação (chave → valor). Valores sensíveis são gravados cifrados
+/// (AES-256-GCM) com uma chave local que fica fora do banco — ver src/lib/secrets.ts.
+model Setting {
+  key       String   @id
+  value     String
+  encrypted Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
