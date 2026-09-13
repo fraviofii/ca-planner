@@ -43,7 +43,9 @@ model Account {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
-  transactions Transaction[]
+  transactions   Transaction[]
+  planItems      PlanItem[]
+  planExceptions PlanItemException[]
 }
 
 model CategoryGroup {
@@ -65,7 +67,9 @@ model Category {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
-  transactions Transaction[]
+  transactions   Transaction[]
+  planItems      PlanItem[]
+  planExceptions PlanItemException[]
 
   @@unique([groupId, name])
 }
@@ -85,6 +89,7 @@ model Transaction {
   categoryId       String?
   category         Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   isTransfer       Boolean   @default(false) // transferência entre contas próprias: fora dos totais
+  planMatch        PlanMatch?
   notes            String?
   raw              String?   // JSON original, para auditoria
   createdAt        DateTime  @default(now())
@@ -102,4 +107,73 @@ model Setting {
   value     String
   encrypted Boolean  @default(false)
   updatedAt DateTime @updatedAt
+}
+
+/// Um item do planejamento mensal: um pagamento ou recebimento previsto.
+/// Não tem ligação com Transaction — o plano é só previsão.
+///
+/// Quando `recurrence` não é NONE, a linha é a *regra* da série: as ocorrências dos
+/// meses seguintes são projetadas em tempo de leitura (ver src/lib/plan.ts), nunca
+/// gravadas. Alterar ou pular uma ocorrência gera um PlanItemException; alterar "esta
+/// e as futuras" fecha a regra em `endDay` e abre uma nova a partir do dia escolhido.
+model PlanItem {
+  id          String    @id @default(cuid())
+  description String
+  amountCents Int       // com sinal: negativo = pagamento, positivo = recebimento
+  startDay    DateTime  // primeira ocorrência (meia-noite UTC)
+  recurrence  String    @default("NONE") // NONE | WEEKLY | BIWEEKLY | MONTHLY
+  endDay      DateTime? // último dia em que a série ainda pode ocorrer (inclusive); null = sem fim
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  accountId   String?
+  account     Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  exceptions PlanItemException[]
+  matches    PlanMatch[]
+
+  @@index([startDay])
+}
+
+/// Uma ocorrência de uma série que foge à regra: pulada (`skipped`) ou com valores
+/// próprios. Quando não é pulada, guarda o valor *completo* da ocorrência — nunca
+/// um patch parcial —, para que "sem categoria" seja distinguível de "herda a regra".
+model PlanItemException {
+  id          String    @id @default(cuid())
+  itemId      String
+  item        PlanItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  day         DateTime  // dia da ocorrência original (meia-noite UTC)
+  skipped     Boolean   @default(false)
+  description String?
+  amountCents Int?
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  accountId   String?
+  account     Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([itemId, day])
+}
+
+/// Liga uma transação realizada à ocorrência do planejamento que ela cumpriu.
+///
+/// Só existe quando o usuário marca à mão. O palpite automático — mesmo valor em
+/// centavos, até 3 dias de diferença, mesma conta quando o item tem conta — não grava
+/// nada: é recalculado a cada leitura. `itemId` nulo é o "não, esta não estava no
+/// plano", que serve justamente para desfazer um palpite errado.
+model PlanMatch {
+  id            String      @id @default(cuid())
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  itemId        String?
+  item          PlanItem?   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  day           DateTime?   // dia da ocorrência casada
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([itemId, day])
 }

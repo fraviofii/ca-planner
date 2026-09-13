@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { dateToDay, dayToDate, isValidDay } from "@/lib/dates";
 import { badRequest } from "@/lib/http";
+import { balanceScope, closingBalances, movementsByDay } from "@/lib/balances";
 
 export const dynamic = "force-dynamic";
 
@@ -59,5 +60,20 @@ export async function GET(req: Request) {
   return NextResponse.json({
     transactions: rows.map((r) => ({ ...r, day: dateToDay(r.date), raw: undefined })),
     totals: { incomeCents, expenseCents, netCents: incomeCents + expenseCents, count, shown: rows.length, limit: LIMIT },
+    balances: await dayBalances(accountId, rows),
   });
+}
+
+/**
+ * Saldo no fim de cada dia contábil mostrado — ver src/lib/balances.ts para o método.
+ * Devolve null quando alguma conta envolvida não tem saldo conhecido.
+ */
+async function dayBalances(accountId: string | null, rows: Array<{ date: Date }>) {
+  if (!rows.length) return null;
+  const scope = await balanceScope(accountId);
+  if (!scope) return null;
+
+  // rows vem em ordem decrescente: a última linha é o dia mais antigo da tela.
+  const movements = await movementsByDay(scope.accountIds, dateToDay(rows[rows.length - 1].date));
+  return { byDay: closingBalances(scope.anchorCents, movements), accountCount: scope.accountCount };
 }

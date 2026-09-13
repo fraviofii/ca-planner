@@ -10,3 +10,10 @@ const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 export function formatCents(cents: number): string {
   return brl.format(cents / 100);
 }
+
+const brlShort = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 1 });
+
+/** Forma curta para eixos e rótulos apertados: "R$ 5,8 mil". */
+export function formatCentsShort(cents: number): string {
+  return brlShort.format(cents / 100);
+}

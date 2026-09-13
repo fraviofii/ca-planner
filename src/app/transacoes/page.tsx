@@ -7,6 +7,7 @@ import { Money } from "@/components/Money";
 import { CategorySelect } from "@/components/CategorySelect";
 import { PeriodPicker, defaultPeriod, periodBounds, type Period } from "@/components/PeriodPicker";
 import { formatDay } from "@/lib/dates";
+import { formatCents } from "@/lib/money";
 
 export default function TransactionsPage() {
   return (
@@ -110,6 +111,7 @@ function TransactionsView() {
   }
 
   const rows = data?.transactions ?? [];
+  const balances = data?.balances ?? null;
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
   const toggleOne = (id: string) =>
@@ -209,11 +211,19 @@ function TransactionsView() {
               <th className="px-3 py-2">Descrição</th>
               <th className="px-3 py-2">Categoria</th>
               <th className="px-3 py-2 text-right">Valor</th>
+              {balances && (
+                <th
+                  className="px-3 py-2 text-right"
+                  title={`Saldo no fim do dia${balances.accountCount > 1 ? `, somando as ${balances.accountCount} contas` : ""}. Vem do saldo atual da conta menos os lançamentos posteriores, então não muda com os filtros da tela.`}
+                >
+                  Saldo
+                </th>
+              )}
               <th className="px-3 py-2 text-center">Transf.</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((t) => (
+            {rows.map((t, i) => (
               <tr key={t.id} className={`${t.isTransfer ? "text-slate-400" : ""} ${selected.has(t.id) ? "bg-sky-50/60" : "hover:bg-slate-50"}`}>
                 <td className="px-3 py-2">
                   <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleOne(t.id)} aria-label="Selecionar" />
@@ -243,6 +253,18 @@ function TransactionsView() {
                 <td className="whitespace-nowrap px-3 py-2 text-right font-medium">
                   <Money cents={t.amountCents} signed={!t.isTransfer} />
                 </td>
+                {balances && (
+                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                    {i === 0 || rows[i - 1].day !== t.day ? (
+                      <span
+                        className={`tabular-nums ${balances.byDay[t.day] < 0 ? "money-neg" : "text-slate-600"}`}
+                        title={`Saldo no fim de ${formatDay(t.day)}`}
+                      >
+                        {balances.byDay[t.day] === undefined ? "—" : formatCents(balances.byDay[t.day])}
+                      </span>
+                    ) : null}
+                  </td>
+                )}
                 <td className="px-3 py-2 text-center">
                   <button
                     className={`badge cursor-pointer ${t.isTransfer ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
@@ -256,7 +278,7 @@ function TransactionsView() {
             ))}
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={balances ? 8 : 7} className="px-3 py-8 text-center text-slate-500">
                   Nenhum lançamento com esses filtros.
                 </td>
               </tr>
