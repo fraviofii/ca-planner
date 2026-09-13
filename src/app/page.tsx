@@ -82,7 +82,7 @@ export default function DashboardPage() {
       {data && data.totals.count === 0 && (
         <div className="card text-sm text-slate-600">
           Nenhum lançamento no período. Sincronize uma conexão ou importe os JSON da skill em{" "}
-          <Link href="/conexoes" className="text-sky-700 underline-offset-2 hover:underline">
+          <Link href="/configuracoes/conexoes" className="text-sky-700 underline-offset-2 hover:underline">
             Conexões
           </Link>
           .

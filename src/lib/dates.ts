@@ -25,6 +25,15 @@ export function todayDay(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Mês corrente no fuso local, como "AAAA-MM". */
+export function currentMonth(): string {
+  return todayDay().slice(0, 7);
+}
+
+export function isValidMonth(s: unknown): s is string {
+  return typeof s === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
+}
+
 export function addDays(day: string, delta: number): string {
   const d = dayToDate(day);
   d.setUTCDate(d.getUTCDate() + delta);

@@ -63,6 +63,8 @@ export interface TransactionDto {
 export interface TransactionsResponse {
   transactions: TransactionDto[];
   totals: { incomeCents: number; expenseCents: number; netCents: number; count: number; shown: number; limit: number };
+  /** Saldo no fim de cada dia (chave "AAAA-MM-DD"); null quando alguma conta não tem saldo conhecido. */
+  balances: { byDay: Record<string, number>; accountCount: number } | null;
 }
 
 export interface SummaryResponse {
@@ -116,4 +118,88 @@ export interface ImportResultDto {
   skipped: number;
   accounts: string[];
   errors: string[];
+}
+
+export interface PlanOccurrenceDto {
+  itemId: string;
+  day: string;
+  description: string;
+  amountCents: number;
+  categoryId: string | null;
+  category: CategoryRef | null;
+  accountId: string | null;
+  account: { id: string; name: string } | null;
+  notes: string | null;
+  recurrence: "NONE" | "WEEKLY" | "BIWEEKLY" | "MONTHLY";
+  seriesStartDay: string;
+  seriesEndDay: string | null;
+  overridden: boolean; // esta ocorrência foi editada só para este dia
+}
+
+export interface PlanBucket {
+  id: string | null;
+  name: string;
+  incomeCents: number;
+  expenseCents: number;
+  count: number;
+}
+
+export interface PlanResponse {
+  month: string;
+  editable: boolean; // false fora do mês corrente: a página fica só de leitura
+  occurrences: PlanOccurrenceDto[];
+  totals: { incomeCents: number; expenseCents: number; netCents: number; count: number };
+  groups: Array<PlanBucket & { categories: PlanBucket[] }>;
+  accounts: PlanBucket[];
+}
+
+export interface PlanOccurrenceResponse {
+  occurrence: PlanOccurrenceDto;
+  editable: boolean;
+}
+
+export interface PlanMatchDto {
+  itemId: string;
+  day: string; // dia em que estava previsto
+  description: string; // descrição do item de planejamento
+  source: "auto" | "manual"; // palpite do sistema ou marcação sua
+  dayDiff: number; // dias entre o previsto e o realizado
+}
+
+export interface CashFlowEntryDto {
+  transactionId?: string; // só nas linhas realizadas
+  itemId?: string; // só nas linhas previstas
+  description: string;
+  accountId: string | null;
+  accountName: string | null; // null nos itens de planejamento sem conta
+  amountCents: number;
+  plan: PlanMatchDto | null; // o item previsto que esta transação cumpriu
+}
+
+export interface CashFlowDayDto {
+  day: string;
+  balanceCents: number;
+  movementCents: number;
+  projected: boolean; // depois de hoje: vem do planejamento
+  entries: CashFlowEntryDto[]; // transações do dia, ou itens previstos
+}
+
+export interface CashFlowResponse {
+  month: string;
+  today: string;
+  available: boolean;
+  reason?: string;
+  scope: { accountId: string | null; accountName: string | null; accountCount: number };
+  days: CashFlowDayDto[];
+  planOptions: Array<{ itemId: string; day: string; description: string; amountCents: number; accountName: string | null }>;
+  summary: {
+    todayCents: number;
+    endCents: number;
+    plannedIncomeCents: number;
+    plannedExpenseCents: number;
+    lowestCents: number;
+    lowestDay: string;
+    ignoredPlan: { count: number; cents: number };
+    unassignedPlan: { count: number; cents: number };
+  } | null;
 }
