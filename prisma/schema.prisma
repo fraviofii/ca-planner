@@ -127,6 +127,8 @@ model PlanItem {
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   accountId   String?
   account     Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  paymentType String?   // DEBIT_AUTO | TRANSFER | BOLETO; null = não informado
+  status      String    @default("OPEN") // OPEN | SCHEDULED | DONE — ver PlanItemException
   notes       String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -140,6 +142,9 @@ model PlanItem {
 /// Uma ocorrência de uma série que foge à regra: pulada (`skipped`) ou com valores
 /// próprios. Quando não é pulada, guarda o valor *completo* da ocorrência — nunca
 /// um patch parcial —, para que "sem categoria" seja distinguível de "herda a regra".
+///
+/// O estado (`status`) é sempre da ocorrência, nunca da série: marcar setembro como
+/// pago não mexe em outubro. Numa série, portanto, mudar o estado grava uma exceção.
 model PlanItemException {
   id          String    @id @default(cuid())
   itemId      String
@@ -152,6 +157,8 @@ model PlanItemException {
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   accountId   String?
   account     Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  paymentType String?
+  status      String    @default("OPEN")
   notes       String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

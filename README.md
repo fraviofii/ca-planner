@@ -76,7 +76,17 @@ sincronizada, a conta é reconhecida e vinculada.
 - **Transações** — filtros por período, conta, categoria (inclusive "Sem categoria"),
   transferências e texto. Categoria editável inline; seleção múltipla para categorizar em
   lote; flag de transferência por clique. Mostra a categoria sugerida pela Pluggy só como
-  dica.
+  dica. O botão **Sincronizar** busca lançamentos novos de todas as conexões, no período
+  que está na tela (em "Tudo", nos últimos 30 dias) e mostra o resultado de cada conexão.
+  O botão **Exportar** gera Excel (.xlsx), CSV ou PDF: abre com o recorte da tela e
+  permite somar várias contas no mesmo arquivo e ajustar o intervalo de datas antes de
+  baixar. O arquivo não tem o limite de 1000 linhas da listagem (teto de 50 mil).
+- **Planejamento** — o previsto do mês: lançamentos avulsos ou recorrentes, com forma de
+  pagamento (débito automático, transferência, boleto) e estado (aberto, agendado, feito).
+  O estado é sempre da ocorrência — marcar setembro como feito não mexe em outubro — e pode
+  ser trocado direto na lista. Em débito automático o estado fica travado em Aberto: o banco
+  debita sozinho, não há o que agendar nem marcar. É informativo: quem decide o que já foi
+  cumprido no Fluxo de caixa continua sendo a conciliação com as transações reais.
 - **Categorias** — grupos e categorias editáveis (criar, renomear, mover, apagar). Apagar
   devolve os lançamentos para "Sem categoria".
 - **Conexões** — cadastro de itens da Pluggy, sincronização por período (uma ou todas),
@@ -117,6 +127,8 @@ src/lib/sync.ts             sincronização de uma conexão → banco
 src/lib/settings.ts         configurações (credenciais da Pluggy) na tabela Setting
 src/lib/secrets.ts          cifra AES-256-GCM com chave local (data/.secret-key)
 src/lib/import-json.ts      importação dos JSON da skill
+src/lib/transaction-filters.ts  filtros da listagem, compartilhados com a exportação
+src/lib/export/*            geração dos arquivos: rows (consulta), csv, xlsx (ExcelJS), pdf (pdf-lib)
 src/app/api/*               rotas REST usadas pela interface
 src/app/(páginas)           Visão geral, Transações, Categorias, Conexões
 electron/main.cjs           janela + servidor Next embutido (modo autônomo)

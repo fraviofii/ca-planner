@@ -2,9 +2,9 @@
 
 import { prisma } from "@/lib/prisma";
 import { badRequest } from "@/lib/http";
-import { dateToDay } from "@/lib/dates";
+import { currentMonth, dateToDay, isValidDay } from "@/lib/dates";
 import type { PlanOccurrenceDto } from "@/lib/client";
-import type { PlanRule, Recurrence } from "@/lib/plan";
+import { hasOccurrenceOn, type PaymentType, type PlanRule, type PlanStatus, type Recurrence } from "@/lib/plan";
 
 /** Confere categoria e conta informadas; devolve a resposta de erro ou null. */
 export async function checkRefs(categoryId: string | null, accountId: string | null) {
@@ -24,6 +24,8 @@ export interface PlanValues {
   category: CategoryShape | null;
   accountId: string | null;
   account: { id: string; name: string } | null;
+  paymentType: string | null;
+  status: string;
   notes: string | null;
 }
 
@@ -53,12 +55,43 @@ export function toOccurrence(item: PlanItemShape, ex: PlanValues | null, day: st
     category: src.category ? { id: src.category.id, name: src.category.name, group: { id: src.category.group.id, name: src.category.group.name } } : null,
     accountId: src.accountId,
     account: src.account,
+    paymentType: (src.paymentType as PaymentType | null) ?? null,
+    status: src.status as PlanStatus,
     notes: src.notes,
     recurrence: rule.recurrence,
     seriesStartDay: rule.startDay,
     seriesEndDay: rule.endDay,
-    overridden: Boolean(ex),
+    overridden: Boolean(ex) && overridesValues(item, ex as PlanValues),
   };
+}
+
+/**
+ * A exceção mudou algum valor, ou só o estado? Marcar uma ocorrência como paga grava
+ * uma exceção igualzinha à regra — e essa não é uma ocorrência "alterada".
+ */
+function overridesValues(item: PlanItemShape, ex: PlanValues): boolean {
+  return (
+    (ex.description ?? item.description) !== item.description ||
+    (ex.amountCents ?? item.amountCents) !== item.amountCents ||
+    ex.categoryId !== item.categoryId ||
+    ex.accountId !== item.accountId ||
+    ex.paymentType !== item.paymentType ||
+    ex.notes !== item.notes
+  );
+}
+
+/** Carrega o item e confere que o dia pedido é mesmo uma ocorrência dele, no mês corrente. */
+export async function loadOccurrence(id: string, day: unknown) {
+  if (!isValidDay(day)) return { error: badRequest("Dia deve ser AAAA-MM-DD.") };
+  if (day.slice(0, 7) !== currentMonth()) return { error: badRequest("Só é possível alterar o planejamento do mês corrente.") };
+
+  const item = await prisma.planItem.findUnique({ where: { id } });
+  if (!item) return { error: badRequest("Item de planejamento não encontrado.", 404) };
+
+  const rule = ruleOf(item);
+  if (!hasOccurrenceOn(rule, day)) return { error: badRequest("Esse dia não é uma ocorrência deste item.") };
+
+  return { item, rule, day };
 }
 
 /** Ordem do grupo da categoria efetiva — usada só para ordenar a quebra por categoria. */

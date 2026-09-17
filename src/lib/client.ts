@@ -1,5 +1,7 @@
 /** Utilitários do lado do navegador: fetch com erro legível e tipos das respostas da API. */
 
+import type { PaymentType, PlanStatus } from "@/lib/plan";
+
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
     super(message);
@@ -129,6 +131,8 @@ export interface PlanOccurrenceDto {
   category: CategoryRef | null;
   accountId: string | null;
   account: { id: string; name: string } | null;
+  paymentType: PaymentType | null; // como o dinheiro se move; null = não informado
+  status: PlanStatus; // estado desta ocorrência
   notes: string | null;
   recurrence: "NONE" | "WEEKLY" | "BIWEEKLY" | "MONTHLY";
   seriesStartDay: string;

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { currentMonth, dateToDay, dayToDate, isValidDay, isValidMonth, monthRange } from "@/lib/dates";
 import { badRequest, readJson } from "@/lib/http";
-import { isRecurrence, occurrencesBetween } from "@/lib/plan";
+import { isPaymentType, isPlanStatus, isRecurrence, occurrencesBetween, statusLocked } from "@/lib/plan";
 import { checkRefs, groupSortOrder, planIncludes, ruleOf, toOccurrence } from "@/lib/plan-server";
 
 export const dynamic = "force-dynamic";
@@ -105,6 +105,8 @@ interface CreateBody {
   amountCents?: number;
   categoryId?: string | null;
   accountId?: string | null;
+  paymentType?: string | null;
+  status?: string;
   recurrence?: string;
   endDay?: string | null;
   notes?: string | null;
@@ -134,6 +136,13 @@ export async function POST(req: Request) {
     endDay = body.endDay;
   }
 
+  const paymentType = body.paymentType ?? null;
+  if (paymentType !== null && !isPaymentType(paymentType)) return badRequest("Forma de pagamento inválida.");
+
+  const status = body.status ?? "OPEN";
+  if (!isPlanStatus(status)) return badRequest("Estado inválido.");
+  const effectiveStatus = statusLocked(paymentType) ? "OPEN" : status;
+
   const refs = await checkRefs(body.categoryId ?? null, body.accountId ?? null);
   if (refs) return refs;
 
@@ -146,6 +155,8 @@ export async function POST(req: Request) {
       endDay: endDay ? dayToDate(endDay) : null,
       categoryId: body.categoryId ?? null,
       accountId: body.accountId ?? null,
+      paymentType,
+      status: effectiveStatus,
       notes: body.notes?.trim() || null,
     },
   });

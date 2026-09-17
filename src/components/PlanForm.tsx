@@ -5,7 +5,18 @@ import { api, type AccountDto, type CategoryGroupDto, type PlanOccurrenceDto } f
 import { CategorySelect } from "@/components/CategorySelect";
 import { monthRange, todayDay } from "@/lib/dates";
 import { toCents } from "@/lib/money";
-import { RECURRENCE_LABELS, type Recurrence } from "@/lib/plan";
+import {
+  PAYMENT_TYPE_LABELS,
+  PAYMENT_TYPES,
+  PLAN_STATUS_LABELS,
+  PLAN_STATUSES,
+  RECURRENCE_LABELS,
+  STATUS_LOCKED_NOTE,
+  statusLocked,
+  type PaymentType,
+  type PlanStatus,
+  type Recurrence,
+} from "@/lib/plan";
 
 /** Categorias e contas para os selects — as duas páginas do formulário precisam das mesmas. */
 export function usePlanRefs() {
@@ -26,6 +37,8 @@ export interface PlanFormState {
   value: string;
   categoryId: string | null;
   accountId: string;
+  paymentType: PaymentType | "";
+  status: PlanStatus;
   recurrence: Recurrence;
   endDay: string;
   notes: string;
@@ -41,6 +54,8 @@ export function emptyPlanForm(month: string): PlanFormState {
     value: "",
     categoryId: null,
     accountId: "",
+    paymentType: "",
+    status: "OPEN",
     recurrence: "NONE",
     endDay: "",
     notes: "",
@@ -55,6 +70,8 @@ export function planFormFrom(o: PlanOccurrenceDto): PlanFormState {
     value: (Math.abs(o.amountCents) / 100).toFixed(2),
     categoryId: o.categoryId,
     accountId: o.accountId ?? "",
+    paymentType: o.paymentType ?? "",
+    status: o.status,
     recurrence: o.recurrence,
     endDay: o.seriesEndDay ?? "",
     notes: o.notes ?? "",
@@ -79,6 +96,11 @@ interface Props {
 
 export function PlanForm({ value, onChange, groups, accounts, month, lockDay, hideRecurrence }: Props) {
   const bounds = useMemo(() => monthRange(month), [month]);
+  const lockedStatus = statusLocked(value.paymentType);
+
+  // Trocar para débito automático devolve o estado a Aberto: não há o que marcar.
+  const setPaymentType = (paymentType: PlanFormState["paymentType"]) =>
+    onChange(statusLocked(paymentType) ? { paymentType, status: "OPEN" } : { paymentType });
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Field label="Tipo">
@@ -118,6 +140,31 @@ export function PlanForm({ value, onChange, groups, accounts, month, lockDay, hi
           ))}
         </select>
       </Field>
+      <Field label="Forma de pagamento">
+        <select className="input w-full" value={value.paymentType} onChange={(e) => setPaymentType(e.target.value as PlanFormState["paymentType"])}>
+          <option value="">Não informada</option>
+          {PAYMENT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {PAYMENT_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Estado">
+        <select
+          className="input w-full"
+          value={value.status}
+          disabled={lockedStatus}
+          title={lockedStatus ? STATUS_LOCKED_NOTE : statusHint}
+          onChange={(e) => onChange({ status: e.target.value as PlanStatus })}
+        >
+          {PLAN_STATUSES.map((st) => (
+            <option key={st} value={st}>
+              {PLAN_STATUS_LABELS[st]}
+            </option>
+          ))}
+        </select>
+      </Field>
       {!hideRecurrence && (
         <Field label="Recorrência">
           <select className="input w-full" value={value.recurrence} onChange={(e) => onChange({ recurrence: e.target.value as Recurrence })}>
@@ -140,6 +187,9 @@ export function PlanForm({ value, onChange, groups, accounts, month, lockDay, hi
     </div>
   );
 }
+
+/** O estado é sempre do dia editado, mesmo quando a alteração vale para as futuras. */
+const statusHint = "O estado vale só para esta ocorrência; as futuras nascem em Aberto.";
 
 function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
   return (
