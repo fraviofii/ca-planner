@@ -56,7 +56,23 @@ npm run dev            # web: http://localhost:3000
 npm run electron:dev   # desktop em desenvolvimento (sobe o next dev e abre a janela)
 npm run electron       # desktop autônomo: next build + servidor embutido
 npm run build && npm start   # web em produção
+npm run dist           # empacota o app do macOS (.dmg em release/)
 ```
+
+### App de desktop empacotado
+
+`npm run dist` gera `release/CA Planner-<versão>-arm64.dmg` (Apple Silicon). Dentro do
+app vão o servidor Next em modo `standalone`, as migrações e o engine do Prisma — nada
+depende da pasta do projeto nem de `node_modules`.
+
+O app **não é assinado** (não há certificado Developer ID), então na primeira vez o macOS
+pede o caminho mais longo: clique com o botão direito no app › **Abrir** › **Abrir**.
+
+Sem `.env` ao lado, o app guarda tudo em
+`~/Library/Application Support/CA Planner/`: `ca_planner.db` e a chave `.secret-key`. Um
+banco novo nasce vazio — para levar o histórico desta pasta, copie os dois arquivos de
+`data/` para lá com o app fechado. As migrações pendentes são aplicadas na abertura, sem
+o CLI do Prisma (ver `electron/migrate.cjs`).
 
 ### Importar os JSON da skill
 
@@ -76,7 +92,17 @@ sincronizada, a conta é reconhecida e vinculada.
 - **Transações** — filtros por período, conta, categoria (inclusive "Sem categoria"),
   transferências e texto. Categoria editável inline; seleção múltipla para categorizar em
   lote; flag de transferência por clique. Mostra a categoria sugerida pela Pluggy só como
-  dica.
+  dica. O botão **Sincronizar** busca lançamentos novos de todas as conexões, no período
+  que está na tela (em "Tudo", nos últimos 30 dias) e mostra o resultado de cada conexão.
+  O botão **Exportar** gera Excel (.xlsx), CSV ou PDF: abre com o recorte da tela e
+  permite somar várias contas no mesmo arquivo e ajustar o intervalo de datas antes de
+  baixar. O arquivo não tem o limite de 1000 linhas da listagem (teto de 50 mil).
+- **Planejamento** — o previsto do mês: lançamentos avulsos ou recorrentes, com forma de
+  pagamento (débito automático, transferência, boleto) e estado (aberto, agendado, feito).
+  O estado é sempre da ocorrência — marcar setembro como feito não mexe em outubro — e pode
+  ser trocado direto na lista. Em débito automático o estado fica travado em Aberto: o banco
+  debita sozinho, não há o que agendar nem marcar. É informativo: quem decide o que já foi
+  cumprido no Fluxo de caixa continua sendo a conciliação com as transações reais.
 - **Categorias** — grupos e categorias editáveis (criar, renomear, mover, apagar). Apagar
   devolve os lançamentos para "Sem categoria".
 - **Conexões** — cadastro de itens da Pluggy, sincronização por período (uma ou todas),
@@ -117,17 +143,21 @@ src/lib/sync.ts             sincronização de uma conexão → banco
 src/lib/settings.ts         configurações (credenciais da Pluggy) na tabela Setting
 src/lib/secrets.ts          cifra AES-256-GCM com chave local (data/.secret-key)
 src/lib/import-json.ts      importação dos JSON da skill
+src/lib/transaction-filters.ts  filtros da listagem, compartilhados com a exportação
+src/lib/export/*            geração dos arquivos: rows (consulta), csv, xlsx (ExcelJS), pdf (pdf-lib)
 src/app/api/*               rotas REST usadas pela interface
 src/app/(páginas)           Visão geral, Transações, Categorias, Conexões
-electron/main.cjs           janela + servidor Next embutido (modo autônomo)
+electron/main.cjs           janela + servidor Next (em processo, ou standalone no app)
+electron/migrate.cjs        aplica as migrações sem o CLI do Prisma (node:sqlite)
+scripts/pack-server.mjs     junta estáticos e public ao standalone antes de empacotar
 scripts/import-json.ts      importação por linha de comando
 ```
 
 ## Próximos passos possíveis
 
 Regras de categorização por palavra-chave; pareamento das duas pontas de uma transferência;
-cliente direto do Inter (mTLS) como alternativa à Pluggy; exportação OFX; empacotamento
-com electron-builder (hoje o desktop roda a partir da pasta do projeto, com `node_modules`).
+cliente direto do Inter (mTLS) como alternativa à Pluggy; exportação OFX; assinatura e
+notarização do app (hoje o .dmg sai sem assinatura); build para Intel além do Apple Silicon.
 
 ## Licença
 

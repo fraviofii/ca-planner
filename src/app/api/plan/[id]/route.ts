@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { addDays, currentMonth, dayToDate, isValidDay } from "@/lib/dates";
 import { badRequest, readJson } from "@/lib/http";
-import { hasOccurrenceOn, isRecurrence, type Recurrence } from "@/lib/plan";
-import { checkRefs, planIncludes, ruleOf, toOccurrence } from "@/lib/plan-server";
+import { hasOccurrenceOn, isPaymentType, isPlanStatus, isRecurrence, statusLocked, type PlanStatus, type Recurrence } from "@/lib/plan";
+import { checkRefs, loadOccurrence, planIncludes, ruleOf, toOccurrence } from "@/lib/plan-server";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,8 @@ interface PatchBody {
   amountCents?: number;
   categoryId?: string | null;
   accountId?: string | null;
+  paymentType?: string | null;
+  status?: string;
   notes?: string | null;
   recurrence?: string;
   endDay?: string | null;
@@ -70,14 +73,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const refs = await checkRefs(categoryId, accountId);
   if (refs) return refs;
 
-  const values = { description, amountCents: amountCents as number, categoryId, accountId, notes: body.notes?.trim() || null };
+  const paymentType = body.paymentType ?? null;
+  if (paymentType !== null && !isPaymentType(paymentType)) return badRequest("Forma de pagamento inválida.");
+  const wanted = body.status ?? "OPEN";
+  if (!isPlanStatus(wanted)) return badRequest("Estado inválido.");
+  const status: PlanStatus = statusLocked(paymentType) ? "OPEN" : wanted; // débito automático não tem estado
+
+  const values = { description, amountCents: amountCents as number, categoryId, accountId, paymentType, notes: body.notes?.trim() || null };
 
   // Exceção: vale só para aquele dia, e guarda a ocorrência inteira.
   if (rule.recurrence !== "NONE" && scope === "one") {
     const ex = await prisma.planItemException.upsert({
       where: { itemId_day: { itemId: item.id, day: dayToDate(day) } },
-      create: { itemId: item.id, day: dayToDate(day), skipped: false, ...values },
-      update: { skipped: false, ...values },
+      create: { itemId: item.id, day: dayToDate(day), skipped: false, ...values, status },
+      update: { skipped: false, ...values, status },
     });
     return NextResponse.json(ex);
   }
@@ -93,11 +102,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   if (recurrence === "NONE") endDay = null;
 
+  // Numa série, o estado continua sendo da ocorrência: a regra nasce aberta e o dia
+  // editado ganha uma exceção só com o estado escolhido (ver markStatus).
+  const ruleStatus = recurrence === "NONE" ? status : "OPEN";
+
   // O dia editado é o começo da regra (ou o item nem se repete): altera a própria linha.
   if (day === rule.startDay) {
     const updated = await prisma.$transaction(async (tx) => {
       await tx.planItemException.deleteMany({ where: { itemId: item.id, day: { gte: dayToDate(day) } } });
-      return tx.planItem.update({ where: { id: item.id }, data: { ...values, recurrence, endDay: endDay ? dayToDate(endDay) : null } });
+      const row = await tx.planItem.update({
+        where: { id: item.id },
+        data: { ...values, status: ruleStatus, recurrence, endDay: endDay ? dayToDate(endDay) : null },
+      });
+      await markStatus(tx, row.id, day, recurrence, status, values);
+      return row;
     });
     return NextResponse.json(updated);
   }
@@ -106,11 +124,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const created = await prisma.$transaction(async (tx) => {
     await tx.planItemException.deleteMany({ where: { itemId: item.id, day: { gte: dayToDate(day) } } });
     await tx.planItem.update({ where: { id: item.id }, data: { endDay: dayToDate(addDays(day, -1)) } });
-    return tx.planItem.create({
-      data: { ...values, startDay: dayToDate(day), recurrence, endDay: endDay ? dayToDate(endDay) : null },
+    const row = await tx.planItem.create({
+      data: { ...values, status: ruleStatus, startDay: dayToDate(day), recurrence, endDay: endDay ? dayToDate(endDay) : null },
     });
+    await markStatus(tx, row.id, day, recurrence, status, values);
+    return row;
   });
   return NextResponse.json(created, { status: 201 });
+}
+
+/**
+ * Guarda o estado de um dia de uma série. A exceção sai com os mesmos valores da regra —
+ * o que muda é só o estado —, porque a exceção guarda a ocorrência inteira.
+ */
+async function markStatus(
+  tx: Prisma.TransactionClient,
+  itemId: string,
+  day: string,
+  recurrence: Recurrence,
+  status: PlanStatus,
+  values: { description: string; amountCents: number; categoryId: string | null; accountId: string | null; paymentType: string | null; notes: string | null },
+) {
+  if (recurrence === "NONE" || status === "OPEN") return; // sem série, ou nada a destacar
+  await tx.planItemException.create({ data: { itemId, day: dayToDate(day), skipped: false, ...values, status } });
 }
 
 /** DELETE /api/plan/:id?day=AAAA-MM-DD&scope=one|future */
@@ -139,21 +175,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   await prisma.planItemException.upsert({
     where: { itemId_day: { itemId: item.id, day: dayToDate(day) } },
     create: { itemId: item.id, day: dayToDate(day), skipped: true },
-    update: { skipped: true, description: null, amountCents: null, categoryId: null, accountId: null, notes: null },
+    update: { skipped: true, description: null, amountCents: null, categoryId: null, accountId: null, paymentType: null, status: "OPEN", notes: null },
   });
   return NextResponse.json({ ok: true, removed: "occurrence" });
-}
-
-/** Carrega o item e confere que o dia pedido é mesmo uma ocorrência dele, no mês corrente. */
-async function loadOccurrence(id: string, day: unknown) {
-  if (!isValidDay(day)) return { error: badRequest("Dia deve ser AAAA-MM-DD.") };
-  if (day.slice(0, 7) !== currentMonth()) return { error: badRequest("Só é possível alterar o planejamento do mês corrente.") };
-
-  const item = await prisma.planItem.findUnique({ where: { id } });
-  if (!item) return { error: badRequest("Item de planejamento não encontrado.", 404) };
-
-  const rule = ruleOf(item);
-  if (!hasOccurrenceOn(rule, day)) return { error: badRequest("Esse dia não é uma ocorrência deste item.") };
-
-  return { item, rule, day };
 }

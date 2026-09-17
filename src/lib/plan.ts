@@ -23,6 +23,50 @@ export function isRecurrence(v: unknown): v is Recurrence {
   return typeof v === "string" && (RECURRENCES as readonly string[]).includes(v);
 }
 
+/** Como o dinheiro se move. Opcional: quem não souber ainda deixa em branco. */
+export const PAYMENT_TYPES = ["DEBIT_AUTO", "TRANSFER", "BOLETO"] as const;
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
+
+export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  DEBIT_AUTO: "Débito automático",
+  TRANSFER: "Transferência",
+  BOLETO: "Boleto",
+};
+
+export function isPaymentType(v: unknown): v is PaymentType {
+  return typeof v === "string" && (PAYMENT_TYPES as readonly string[]).includes(v);
+}
+
+/**
+ * Em que pé está a ocorrência. É sempre por ocorrência, nunca da série: numa
+ * recorrência, mudar o estado grava uma exceção só daquele dia.
+ *
+ * Não mexe no fluxo de caixa — lá quem decide o que já foi cumprido é a conciliação
+ * com as transações reais (ver src/lib/plan-match.ts).
+ */
+export const PLAN_STATUSES = ["OPEN", "SCHEDULED", "DONE"] as const;
+export type PlanStatus = (typeof PLAN_STATUSES)[number];
+
+export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
+  OPEN: "Aberto",
+  SCHEDULED: "Agendado",
+  DONE: "Feito",
+};
+
+export function isPlanStatus(v: unknown): v is PlanStatus {
+  return typeof v === "string" && (PLAN_STATUSES as readonly string[]).includes(v);
+}
+
+/**
+ * Débito automático o banco cumpre sozinho: não há o que agendar nem o que marcar como
+ * feito. Nesses lançamentos o estado fica travado em Aberto — na tela e na API.
+ */
+export function statusLocked(paymentType: string | null | undefined): boolean {
+  return paymentType === "DEBIT_AUTO";
+}
+
+export const STATUS_LOCKED_NOTE = "Débito automático: o banco debita sozinho, não há estado para marcar.";
+
 export interface PlanRule {
   startDay: string;
   recurrence: Recurrence;

@@ -28,6 +28,8 @@ export default function NewPlanItemPage() {
           amountCents: signedCents(form),
           categoryId: form.categoryId,
           accountId: form.accountId || null,
+          paymentType: form.paymentType || null,
+          status: form.status,
           recurrence: form.recurrence,
           endDay: form.recurrence === "NONE" ? null : form.endDay || null,
           notes: form.notes.trim() || null,

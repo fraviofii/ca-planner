@@ -64,6 +64,8 @@ function EditPlanItemView() {
           amountCents: signedCents(form),
           categoryId: form.categoryId,
           accountId: form.accountId || null,
+          paymentType: form.paymentType || null,
+          status: form.status,
           notes: form.notes.trim() || null,
           ...(touchesSeries ? { recurrence: form.recurrence, endDay: form.recurrence === "NONE" ? null : form.endDay || null } : {}),
         }),

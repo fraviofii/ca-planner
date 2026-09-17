@@ -6,7 +6,14 @@ import { api, type PlanOccurrenceDto, type PlanResponse } from "@/lib/client";
 import { Money } from "@/components/Money";
 import { MonthPicker } from "@/components/MonthPicker";
 import { currentMonth, formatDay, formatMonth } from "@/lib/dates";
-import { RECURRENCE_LABELS } from "@/lib/plan";
+import { PAYMENT_TYPE_LABELS, PLAN_STATUS_LABELS, PLAN_STATUSES, RECURRENCE_LABELS, STATUS_LOCKED_NOTE, statusLocked, type PlanStatus } from "@/lib/plan";
+
+/** Aberto é o estado neutro; agendado e feito ganham cor para saltar na lista. */
+const STATUS_STYLE: Record<PlanStatus, string> = {
+  OPEN: "border-slate-300 bg-slate-100 text-slate-600",
+  SCHEDULED: "border-sky-300 bg-sky-100 text-sky-800",
+  DONE: "border-emerald-300 bg-emerald-100 text-emerald-800",
+};
 
 export default function PlanningPage() {
   const [month, setMonth] = useState(currentMonth);
@@ -30,6 +37,20 @@ export default function PlanningPage() {
     load();
     setConfirmDelete(null);
   }, [load]);
+
+  /** Atalho da lista: muda só o estado daquela ocorrência (numa série, vira exceção do dia). */
+  async function setStatus(o: PlanOccurrenceDto, status: PlanStatus) {
+    const before = data;
+    // Otimista: a linha muda na hora, e volta atrás se a API recusar.
+    setData((d) => (d ? { ...d, occurrences: d.occurrences.map((x) => (x.itemId === o.itemId && x.day === o.day ? { ...x, status } : x)) } : d));
+    try {
+      await api(`/api/plan/${o.itemId}/status`, { method: "PATCH", body: JSON.stringify({ day: o.day, status }) });
+      setError(null);
+    } catch (e) {
+      setData(before);
+      setError((e as Error).message);
+    }
+  }
 
   async function remove(o: PlanOccurrenceDto, scope: "one" | "future") {
     setBusy(true);
@@ -111,11 +132,31 @@ export default function PlanningPage() {
                       {o.description}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                      {isCurrent ? (
+                        <select
+                          className={`appearance-none rounded-full border px-2 py-0.5 text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:opacity-60 ${
+                            statusLocked(o.paymentType) ? "" : "cursor-pointer"
+                          } ${STATUS_STYLE[o.status]}`}
+                          value={o.status}
+                          disabled={statusLocked(o.paymentType)}
+                          title={statusLocked(o.paymentType) ? STATUS_LOCKED_NOTE : "Estado desta ocorrência — vale só para este dia."}
+                          onChange={(e) => setStatus(o, e.target.value as PlanStatus)}
+                        >
+                          {PLAN_STATUSES.map((st) => (
+                            <option key={st} value={st}>
+                              {PLAN_STATUS_LABELS[st]}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className={`badge ${STATUS_STYLE[o.status]}`}>{PLAN_STATUS_LABELS[o.status]}</span>
+                      )}
                       {o.recurrence !== "NONE" && (
                         <span className="badge bg-violet-100 text-violet-700" title={o.seriesEndDay ? `Até ${formatDay(o.seriesEndDay)}` : "Sem data-fim"}>
                           {RECURRENCE_LABELS[o.recurrence].toLowerCase()}
                         </span>
                       )}
+                      {o.paymentType && <span className="badge bg-slate-100 text-slate-600">{PAYMENT_TYPE_LABELS[o.paymentType].toLowerCase()}</span>}
                       {o.overridden && <span className="badge bg-amber-100 text-amber-800">alterada</span>}
                       {o.notes && <span className="truncate">{o.notes}</span>}
                     </div>

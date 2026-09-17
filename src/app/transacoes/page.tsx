@@ -2,11 +2,12 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { api, type AccountDto, type CategoryGroupDto, type TransactionDto, type TransactionsResponse } from "@/lib/client";
+import { api, type AccountDto, type CategoryGroupDto, type SyncResultDto, type TransactionDto, type TransactionsResponse } from "@/lib/client";
 import { Money } from "@/components/Money";
 import { CategorySelect } from "@/components/CategorySelect";
 import { PeriodPicker, defaultPeriod, periodBounds, type Period } from "@/components/PeriodPicker";
-import { formatDay } from "@/lib/dates";
+import { ExportDialog } from "@/components/ExportDialog";
+import { formatDay, todayDay } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 
 export default function TransactionsPage() {
@@ -33,6 +34,9 @@ function TransactionsView() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncLog, setSyncLog] = useState<Array<{ ok: boolean; text: string }> | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), 300);
@@ -100,6 +104,35 @@ function TransactionsView() {
     }
   }
 
+  /**
+   * Sincroniza todas as conexões no período da tela — o normal é querer atualizar
+   * justamente o que se está olhando. Sem período (modo "Tudo"), ou com um período que
+   * ainda não aconteceu, cai nos últimos 30 dias, como a tela de Conexões.
+   */
+  async function syncAll() {
+    setSyncing(true);
+    setSyncLog(null);
+    try {
+      const r = await api<{ results: SyncResultDto[] }>("/api/connections/sync-all", { method: "POST", body: JSON.stringify(syncPeriod(period)) });
+      setSyncLog(
+        r.results.length
+          ? r.results.map((x) => ({
+              ok: x.ok,
+              text: x.ok
+                ? `${x.nickname}: ${x.created} novo(s), ${x.updated} atualizado(s) em ${x.accounts} conta(s).`
+                : `${x.nickname}: falhou — ${x.error}`,
+            }))
+          : [{ ok: true, text: "Nenhuma conexão cadastrada. Cadastre em Configurações › Conexões." }],
+      );
+      setError(null);
+      await load();
+    } catch (e) {
+      setError(`Sincronização falhou — ${(e as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function applyBulk(patch: { categoryId?: string | null; isTransfer?: boolean }) {
     if (!selected.size) return;
     try {
@@ -109,6 +142,12 @@ function TransactionsView() {
       setError((e as Error).message);
     }
   }
+
+  // O diálogo de exportação abre com o recorte da tela; lá dentro dá para somar contas.
+  const exportInitial = useMemo(() => {
+    const b = periodBounds(period);
+    return { from: b.from ?? "", to: b.to ?? "", accountIds: accountId ? [accountId] : [], categoryId, transfers, q };
+  }, [period, accountId, categoryId, transfers, q]);
 
   const rows = data?.transactions ?? [];
   const balances = data?.balances ?? null;
@@ -126,7 +165,15 @@ function TransactionsView() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Transações</h1>
-        <PeriodPicker value={period} onChange={setPeriod} />
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodPicker value={period} onChange={setPeriod} />
+          <button className="btn" onClick={syncAll} disabled={syncing} title={`Buscar lançamentos novos na Pluggy (${describeSyncPeriod(period)})`}>
+            {syncing ? "Sincronizando…" : "Sincronizar"}
+          </button>
+          <button className="btn" onClick={() => setExporting(true)}>
+            Exportar
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -159,7 +206,35 @@ function TransactionsView() {
         <input className="input min-w-64 flex-1" placeholder="Buscar na descrição, contraparte ou notas…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
+      {exporting && (
+        <ExportDialog
+          accounts={accounts}
+          groups={groups}
+          initial={exportInitial}
+          onClose={() => setExporting(false)}
+        />
+      )}
+
       {error && <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+
+      {syncLog && (
+        <div
+          className={`flex items-start justify-between gap-3 rounded-md border p-3 text-sm ${
+            syncLog.every((l) => l.ok) ? "border-sky-200 bg-sky-50 text-sky-900" : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          <ul className="space-y-0.5">
+            {syncLog.map((line, i) => (
+              <li key={i} className={line.ok ? "" : "font-medium text-rose-700"}>
+                {line.text}
+              </li>
+            ))}
+          </ul>
+          <button className="btn btn-sm" onClick={() => setSyncLog(null)}>
+            Fechar
+          </button>
+        </div>
+      )}
 
       {data && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-slate-600">
@@ -288,4 +363,19 @@ function TransactionsView() {
       </div>
     </div>
   );
+}
+
+/** Período que a sincronização deve buscar, a partir do que está na tela. */
+function syncPeriod(period: Period): { from: string; to: string } | { days: number } {
+  const b = periodBounds(period);
+  const today = todayDay();
+  const to = b.to && b.to < today ? b.to : today;
+  // Nada a buscar no futuro; e sem início definido a Pluggy precisa de um limite.
+  if (!b.from || b.from > to) return { days: 30 };
+  return { from: b.from, to };
+}
+
+function describeSyncPeriod(period: Period): string {
+  const p = syncPeriod(period);
+  return "days" in p ? `últimos ${p.days} dias` : `${formatDay(p.from)} a ${formatDay(p.to)}`;
 }
