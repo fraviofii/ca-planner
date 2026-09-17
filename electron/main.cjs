@@ -16,6 +16,10 @@
  * empacotado —, usa a pasta userData do sistema.
  */
 const { app, BrowserWindow, shell, dialog } = require("electron");
+
+// Sem isto o Electron nomeia a pasta de dados pelo `name` do package.json ("ca-planner").
+// O nome de exibição é o que o usuário procura em ~/Library/Application Support.
+app.setName("CA Planner");
 const path = require("node:path");
 const http = require("node:http");
 const net = require("node:net");

@@ -69,7 +69,8 @@ O app **não é assinado** (não há certificado Developer ID), então na primei
 pede o caminho mais longo: clique com o botão direito no app › **Abrir** › **Abrir**.
 
 Sem `.env` ao lado, o app guarda tudo em
-`~/Library/Application Support/CA Planner/`: `ca_planner.db` e a chave `.secret-key`. Um
+`~/Library/Application Support/CA Planner/`: `ca_planner.db` e a chave `.secret-key`
+(o nome da pasta vem do `app.setName` em `electron/main.cjs`). Um
 banco novo nasce vazio — para levar o histórico desta pasta, copie os dois arquivos de
 `data/` para lá com o app fechado. As migrações pendentes são aplicadas na abertura, sem
 o CLI do Prisma (ver `electron/migrate.cjs`).
