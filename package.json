@@ -1,6 +1,6 @@
 {
   "name": "ca-planner",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "license": "MIT",
   "private": true,
   "description": "Gestão de finanças pessoais: coleta lançamentos bancários via Pluggy (Open Finance), guarda em SQLite e permite categorizar.",

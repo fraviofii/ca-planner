@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { addDays, currentMonth, dateToDay, dayToDate, monthRange, todayDay } from "@/lib/dates";
 import { balanceScope, dailyBalances, movementsByDay } from "@/lib/balances";
-import { occurrencesBetween } from "@/lib/plan";
-import { planIncludes, ruleOf, toOccurrence } from "@/lib/plan-server";
-import { matchPlan, occurrenceKey, type MatchOccurrence } from "@/lib/plan-match";
+import { occurrenceKey } from "@/lib/plan-match";
+import { loadPlanOccurrences, planOptions, resolvePlanMatches, type PlanOccurrence } from "@/lib/plan-match-server";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +47,7 @@ export async function GET(req: Request) {
 
   // Quem já foi cumprido não pode ser previsto de novo: casa as transações realizadas
   // com o que estava no plano e tira do futuro o que a marcação manual já deu por pago.
-  const matches = await resolveMatches(scope.accountIds, realizedEntries, occurrences, today);
+  const matches = await resolveMatches(realizedEntries, occurrences, today);
   for (const [day, list] of plannedEntries) {
     const remaining = list.filter((e) => !e.itemId || !matches.doneOccurrences.has(occurrenceKey(e.itemId, day)));
     if (remaining.length) plannedEntries.set(day, remaining);
@@ -80,7 +79,7 @@ export async function GET(req: Request) {
     available: true,
     scope: { accountId, accountName: account?.name ?? null, accountCount: scope.accountCount },
     days,
-    planOptions: occurrences.map((o) => ({ itemId: o.itemId, day: o.day, description: o.description, amountCents: o.amountCents, accountName: o.accountName })),
+    planOptions: planOptions(occurrences, matches.byTransaction),
     summary: {
       todayCents: days[realized.length - 1].balanceCents,
       endCents: days[days.length - 1].balanceCents,
@@ -121,47 +120,12 @@ interface CashFlowEntry {
   amountCents: number;
 }
 
-/**
- * Casa as transações já realizadas do mês com as ocorrências previstas: o que o usuário
- * marcou à mão vence, o resto sai do palpite (mesmo valor, até 3 dias, mesma conta).
- *
- * O palpite só olha ocorrências de hoje para trás — as futuras ainda não aconteceram.
- * Já uma marcação manual pode apontar para uma ocorrência futura ("paguei adiantado"),
- * e nesse caso ela precisa sumir da projeção, senão o mês contaria o valor duas vezes.
- */
-async function resolveMatches(
-  accountIds: string[],
-  realizedEntries: Map<string, CashFlowEntry[]>,
-  occurrences: Array<MatchOccurrence & { accountName: string | null }>,
-  today: string,
-) {
+/** Casa as transações já realizadas do mês com as ocorrências previstas — ver plan-match-server.ts. */
+function resolveMatches(realizedEntries: Map<string, CashFlowEntry[]>, occurrences: PlanOccurrence[], today: string) {
   const transactions = [...realizedEntries.entries()].flatMap(([day, list]) =>
     list.map((e) => ({ id: e.transactionId!, day, amountCents: e.amountCents, accountId: e.accountId! })),
   );
-  const manual = await prisma.planMatch.findMany({
-    where: { transactionId: { in: transactions.map((t) => t.id) } },
-    select: { transactionId: true, itemId: true, day: true },
-  });
-
-  const byTransaction = matchPlan(
-    transactions,
-    occurrences.filter((o) => o.day <= today),
-    manual.map((m) => ({ transactionId: m.transactionId, itemId: m.itemId, day: m.day ? dateToDay(m.day) : null })),
-  );
-
-  // As marcações manuais para ocorrências futuras não passam pelo palpite; entram aqui.
-  const occurrenceAt = new Map(occurrences.map((o) => [occurrenceKey(o.itemId, o.day), o]));
-  for (const m of manual) {
-    if (!m.itemId || !m.day) continue;
-    const key = occurrenceKey(m.itemId, dateToDay(m.day));
-    const occurrence = occurrenceAt.get(key);
-    if (!occurrence || occurrence.day <= today) continue;
-    byTransaction.set(m.transactionId, { itemId: m.itemId, day: occurrence.day, description: occurrence.description, source: "manual", dayDiff: 0 });
-  }
-
-  const doneOccurrences = new Set<string>();
-  for (const plan of byTransaction.values()) if (plan) doneOccurrences.add(occurrenceKey(plan.itemId, plan.day));
-  return { byTransaction, doneOccurrences };
+  return resolvePlanMatches(transactions, occurrences, today);
 }
 
 /**
@@ -172,48 +136,28 @@ async function resolveMatches(
  * se olha uma conta só, o que está previsto sem conta definida.
  */
 async function plannedMovements(accountId: string | null, from: string, to: string, today: string) {
-  const items = await prisma.planItem.findMany({
-    where: { startDay: { lte: dayToDate(to) }, OR: [{ endDay: null }, { endDay: { gte: dayToDate(from) } }] },
-    include: { ...planIncludes, exceptions: { where: { day: { gte: dayToDate(from), lte: dayToDate(to) } }, include: planIncludes } },
-  });
+  const occurrences = await loadPlanOccurrences(from, to);
 
   const plannedEntries = new Map<string, CashFlowEntry[]>();
-  const occurrences: Array<MatchOccurrence & { accountName: string | null }> = [];
   const ignoredPlan = { count: 0, cents: 0 };
   const unassignedPlan = { count: 0, cents: 0 };
 
-  for (const item of items) {
-    const rule = ruleOf(item);
-    const byDay = new Map(item.exceptions.map((e) => [dateToDay(e.day), e]));
-    for (const day of occurrencesBetween(rule, from, to)) {
-      const ex = byDay.get(day) ?? null;
-      if (ex?.skipped) continue;
-      const occ = toOccurrence(item, ex, day, rule);
-      occurrences.push({
-        itemId: item.id,
-        day,
-        amountCents: occ.amountCents,
-        accountId: occ.accountId,
-        accountName: occ.account?.name ?? null,
-        description: occ.description,
-      });
-
-      if (accountId && occ.accountId !== accountId) {
-        if (occ.accountId === null && day > today) {
-          unassignedPlan.count++;
-          unassignedPlan.cents += occ.amountCents;
-        }
-        continue;
+  for (const occ of occurrences) {
+    if (accountId && occ.accountId !== accountId) {
+      if (occ.accountId === null && occ.day > today) {
+        unassignedPlan.count++;
+        unassignedPlan.cents += occ.amountCents;
       }
-      if (day <= today) {
-        ignoredPlan.count++;
-        ignoredPlan.cents += occ.amountCents;
-        continue;
-      }
-      const list = plannedEntries.get(day) ?? [];
-      list.push({ itemId: item.id, description: occ.description, accountId: occ.accountId, accountName: occ.account?.name ?? null, amountCents: occ.amountCents });
-      plannedEntries.set(day, list);
+      continue;
     }
+    if (occ.day <= today) {
+      ignoredPlan.count++;
+      ignoredPlan.cents += occ.amountCents;
+      continue;
+    }
+    const list = plannedEntries.get(occ.day) ?? [];
+    list.push({ itemId: occ.itemId, description: occ.description, accountId: occ.accountId, accountName: occ.accountName, amountCents: occ.amountCents });
+    plannedEntries.set(occ.day, list);
   }
   for (const list of plannedEntries.values()) list.sort((a, b) => a.amountCents - b.amountCents);
   return { plannedEntries, occurrences, ignoredPlan, unassignedPlan };

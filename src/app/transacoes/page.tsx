@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { api, type AccountDto, type CategoryGroupDto, type SyncResultDto, type TransactionDto, type TransactionsResponse } from "@/lib/client";
 import { Money } from "@/components/Money";
 import { CategorySelect } from "@/components/CategorySelect";
+import { PlanMatchCell } from "@/components/PlanMatchCell";
 import { PeriodPicker, defaultPeriod, periodBounds, type Period } from "@/components/PeriodPicker";
 import { ExportDialog } from "@/components/ExportDialog";
 import { formatDay, todayDay } from "@/lib/dates";
@@ -101,6 +102,22 @@ function TransactionsView() {
     } catch (e) {
       setError((e as Error).message);
       load();
+    }
+  }
+
+  /** Marca à mão (ou desmarca) que uma transação cumpriu um item previsto — como no fluxo de caixa. */
+  async function setMatch(transactionId: string, value: string) {
+    try {
+      if (value === "auto") await api(`/api/plan-match?transactionId=${transactionId}`, { method: "DELETE" });
+      else {
+        const [itemId, day] = value ? value.split("|") : [null, null];
+        await api("/api/plan-match", { method: "PUT", body: JSON.stringify({ transactionId, itemId, day }) });
+      }
+      setError(null);
+      // o vínculo é um-para-um: marcar aqui pode tirar o palpite de outra linha
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
 
@@ -295,6 +312,9 @@ function TransactionsView() {
                 </th>
               )}
               <th className="px-3 py-2 text-center">Transf.</th>
+              <th className="px-3 py-2" title="Qual item do planejamento esta transação cumpriu. ≈ palpite automático (mesmo valor, até 3 dias, mesma conta); ✓ marcado por você. Clique para marcar à mão.">
+                No plano?
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -349,11 +369,14 @@ function TransactionsView() {
                     {t.isTransfer ? "sim" : "não"}
                   </button>
                 </td>
+                <td className="px-3 py-2">
+                  <PlanMatchCell transactionId={t.id} day={t.day} plan={t.plan} options={data?.planOptions ?? []} onChange={setMatch} />
+                </td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={balances ? 8 : 7} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={balances ? 9 : 8} className="px-3 py-8 text-center text-slate-500">
                   Nenhum lançamento com esses filtros.
                 </td>
               </tr>

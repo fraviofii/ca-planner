@@ -60,10 +60,13 @@ export interface TransactionDto {
   isTransfer: boolean;
   notes: string | null;
   account: { id: string; name: string; bankName: string | null };
+  plan: PlanMatchDto | null; // o item previsto que esta transação cumpriu; null = fora do plano
 }
 
 export interface TransactionsResponse {
   transactions: TransactionDto[];
+  /** Ocorrências previstas em volta das transações mostradas, para marcar à mão. */
+  planOptions: PlanOptionDto[];
   totals: { incomeCents: number; expenseCents: number; netCents: number; count: number; shown: number; limit: number };
   /** Saldo no fim de cada dia (chave "AAAA-MM-DD"); null quando alguma conta não tem saldo conhecido. */
   balances: { byDay: Record<string, number>; accountCount: number } | null;
@@ -170,6 +173,16 @@ export interface PlanMatchDto {
   dayDiff: number; // dias entre o previsto e o realizado
 }
 
+/** Uma ocorrência prevista, como o seletor "no plano?" a oferece. */
+export interface PlanOptionDto {
+  itemId: string;
+  day: string;
+  description: string;
+  amountCents: number;
+  accountName: string | null;
+  takenBy: string | null; // id da transação que já cumpre esta ocorrência (palpite ou marcação)
+}
+
 export interface CashFlowEntryDto {
   transactionId?: string; // só nas linhas realizadas
   itemId?: string; // só nas linhas previstas
@@ -195,7 +208,7 @@ export interface CashFlowResponse {
   reason?: string;
   scope: { accountId: string | null; accountName: string | null; accountCount: number };
   days: CashFlowDayDto[];
-  planOptions: Array<{ itemId: string; day: string; description: string; amountCents: number; accountName: string | null }>;
+  planOptions: PlanOptionDto[];
   summary: {
     todayCents: number;
     endCents: number;

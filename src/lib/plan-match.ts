@@ -10,7 +10,8 @@
  * PlanMatch) vence o palpite e é aplicado antes dele.
  */
 
-const WINDOW_DAYS = 3;
+/** Raio do palpite automático, em dias. */
+export const WINDOW_DAYS = 3;
 
 export interface MatchTransaction {
   id: string;

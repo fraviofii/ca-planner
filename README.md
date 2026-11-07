@@ -93,7 +93,10 @@ sincronizada, a conta é reconhecida e vinculada.
 - **Transações** — filtros por período, conta, categoria (inclusive "Sem categoria"),
   transferências e texto. Categoria editável inline; seleção múltipla para categorizar em
   lote; flag de transferência por clique. Mostra a categoria sugerida pela Pluggy só como
-  dica. O botão **Sincronizar** busca lançamentos novos de todas as conexões, no período
+  dica. A coluna **No plano?** mostra qual item do planejamento a transação cumpriu — ≈ é
+  palpite automático, ✓ é marcação sua — e permite marcar à mão (ou dizer que não estava
+  no plano), com as mesmas regras e o mesmo vínculo do Fluxo de caixa. O seletor oferece
+  só as ocorrências do mês da transação que nenhuma outra transação já cumpre. O botão **Sincronizar** busca lançamentos novos de todas as conexões, no período
   que está na tela (em "Tudo", nos últimos 30 dias) e mostra o resultado de cada conexão.
   O botão **Exportar** gera Excel (.xlsx), CSV ou PDF: abre com o recorte da tela e
   permite somar várias contas no mesmo arquivo e ajustar o intervalo de datas antes de

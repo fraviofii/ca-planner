@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type AccountDto, type CashFlowEntryDto, type CashFlowResponse } from "@/lib/client";
+import { api, type AccountDto, type CashFlowResponse } from "@/lib/client";
 import { CashFlowChart } from "@/components/CashFlowChart";
+import { PlanMatchCell } from "@/components/PlanMatchCell";
 import { Money } from "@/components/Money";
 import { formatDay, formatMonth } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
@@ -171,10 +172,10 @@ export default function CashFlowPage() {
                         </td>
                         <td className="px-3 py-1.5 text-slate-600">{entry.accountName ?? <span className="text-slate-400">sem conta</span>}</td>
                         <td className="px-3 py-1.5">
-                          {d.projected ? (
+                          {d.projected || !entry.transactionId ? (
                             <span className="text-slate-300">—</span>
                           ) : (
-                            <PlanMatchCell entry={entry} options={data.planOptions} onChange={setMatch} />
+                            <PlanMatchCell transactionId={entry.transactionId} day={d.day} plan={entry.plan} options={data.planOptions} onChange={setMatch} />
                           )}
                         </td>
                         <td className="whitespace-nowrap px-3 py-1.5 text-right">
@@ -201,77 +202,6 @@ export default function CashFlowPage() {
         </p>
       )}
     </div>
-  );
-}
-
-/**
- * Coluna "no plano?": mostra o vínculo com o planejamento — palpite (≈) ou marcação
- * sua (✓) — e abre o seletor só quando você clica, para a tabela seguir legível.
- */
-function PlanMatchCell({
-  entry,
-  options,
-  onChange,
-}: {
-  entry: CashFlowEntryDto;
-  options: CashFlowResponse["planOptions"];
-  onChange: (transactionId: string, value: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const plan = entry.plan;
-  const transactionId = entry.transactionId;
-  if (!transactionId) return <span className="text-slate-300">—</span>;
-
-  if (editing) {
-    return (
-      <span className="flex items-center gap-1">
-        <select
-          className="input max-w-48 py-1 text-xs"
-          defaultValue={plan ? `${plan.itemId}|${plan.day}` : ""}
-          autoFocus
-          onChange={(e) => {
-            setEditing(false);
-            onChange(transactionId, e.target.value);
-          }}
-        >
-          <option value="">não estava no plano</option>
-          {options.map((o) => (
-            <option key={`${o.itemId}|${o.day}`} value={`${o.itemId}|${o.day}`}>
-              {o.description} · {formatDay(o.day).slice(0, 5)} · {formatCents(o.amountCents)}
-            </option>
-          ))}
-        </select>
-        <button className="text-xs text-slate-400 hover:text-slate-700" title="Cancelar" onClick={() => setEditing(false)}>
-          ×
-        </button>
-      </span>
-    );
-  }
-
-  if (!plan) {
-    return (
-      <button className="text-xs text-slate-400 underline-offset-2 hover:text-sky-700 hover:underline" onClick={() => setEditing(true)}>
-        marcar…
-      </button>
-    );
-  }
-
-  const quando = plan.dayDiff ? `${Math.abs(plan.dayDiff)} dia(s) ${plan.dayDiff > 0 ? "depois" : "antes"} do previsto` : "no dia previsto";
-  return (
-    <span className="flex items-center gap-1">
-      <button
-        className={`badge max-w-44 truncate ${plan.source === "auto" ? "bg-emerald-50 text-emerald-700" : "bg-emerald-100 text-emerald-800"} hover:bg-emerald-200`}
-        title={`${plan.source === "auto" ? "Casado automaticamente" : "Marcado por você"}: ${plan.description}, previsto para ${formatDay(plan.day)} — ${quando}. Clique para mudar.`}
-        onClick={() => setEditing(true)}
-      >
-        {plan.source === "auto" ? "≈" : "✓"} {plan.description}
-      </button>
-      {plan.source === "manual" && (
-        <button className="text-xs text-slate-400 hover:text-slate-700" title="Voltar ao palpite automático" onClick={() => onChange(transactionId, "auto")}>
-          ↺
-        </button>
-      )}
-    </span>
   );
 }
 
