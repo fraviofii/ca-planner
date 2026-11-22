@@ -58,11 +58,12 @@ npm run electron       # desktop autônomo: next build + servidor embutido
 npm run build && npm start   # web em produção
 npm run dist           # empacota o app do macOS (.dmg em release/)
 npm run dist:win       # empacota o app do Windows (instalador .exe em release/)
+npm run dist:linux     # empacota o app do Linux (.AppImage em release/)
 ```
 
 ### App de desktop empacotado
 
-`npm run dist` gera `release/CA Planner-<versão>-arm64.dmg` (Apple Silicon). Dentro do
+`npm run dist` gera `release/CA-Planner-<versão>-arm64.dmg` (Apple Silicon). Dentro do
 app vão o servidor Next em modo `standalone`, as migrações e o engine do Prisma — nada
 depende da pasta do projeto nem de `node_modules`.
 
@@ -76,10 +77,35 @@ banco novo nasce vazio — para levar o histórico desta pasta, copie os dois ar
 `data/` para lá com o app fechado. As migrações pendentes são aplicadas na abertura, sem
 o CLI do Prisma (ver `electron/migrate.cjs`).
 
-No Windows, `npm run dist:win` gera `release/CA Planner-Setup-<versão>-x64.exe`. O instalador
+No Windows, `npm run dist:win` gera `release/CA-Planner-Setup-<versão>-x64.exe`. O instalador
 é por usuário (não pede administrador) e instala em `%LOCALAPPDATA%\Programs\ca-planner`. Os
 dados ficam em `%APPDATA%\CA Planner\`. Também sai sem assinatura: o SmartScreen pode
 avisar ao abrir o instalador.
+
+No Linux, `npm run dist:linux` gera um `.AppImage` (x64), e os dados ficam em
+`~/.config/CA Planner/`.
+
+### Publicar uma versão
+
+O workflow [.github/workflows/release.yml](.github/workflows/release.yml) gera os três
+instaladores (macOS, Windows e Linux) quando uma tag `v*` chega ao GitHub e os anexa à
+release dessa tag. A versão dos instaladores vem da tag, não do `package.json`.
+
+```bash
+git tag -a v0.2.0 -m "CA Planner v0.2.0 — título" -m "O que há de novo, em texto livre."
+git push origin v0.2.0
+```
+
+As notas da release seguem esta ordem:
+
+- **Release criada antes na página de Releases** (que também cria a tag): as notas escritas
+  lá são mantidas, e o workflow só anexa os instaladores.
+- **Tag anotada com texto:** a mensagem da tag vira as notas.
+- **Tag só com título, ou tag leve:** o título e a lista de commits desde a tag anterior.
+
+Tags com hífen (`v0.2.0-beta.1`) viram pré-release. Para gerar de novo os instaladores de
+uma tag, use **Actions › Release › Run workflow**. Isso só funciona com tags criadas depois
+que o workflow entrou no repositório.
 
 ### Importar os JSON da skill
 

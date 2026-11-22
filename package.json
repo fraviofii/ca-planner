@@ -22,7 +22,8 @@
     "postinstall": "prisma generate",
     "pack:server": "node scripts/pack-server.mjs",
     "dist": "next build && npm run pack:server && electron-builder --mac",
-    "dist:win": "next build && npm run pack:server && electron-builder --win"
+    "dist:win": "next build && npm run pack:server && electron-builder --win",
+    "dist:linux": "next build && npm run pack:server && electron-builder --linux"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -52,6 +53,7 @@
     "appId": "com.fraviofii.ca-planner",
     "productName": "CA Planner",
     "copyright": "© 2026 Flavio de Castro Alves Filho",
+    "artifactName": "CA-Planner-${version}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -112,7 +114,18 @@
       ]
     },
     "nsis": {
-      "artifactName": "CA Planner-Setup-${version}-${arch}.${ext}"
+      "artifactName": "CA-Planner-Setup-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Office;Finance"
     }
   }
 }

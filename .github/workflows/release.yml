@@ -1,0 +1,128 @@
+# Gera os instaladores de macOS, Windows e Linux quando uma tag de versão (v*) é
+# enviada, e os anexa à release dessa tag no GitHub.
+#
+#   git tag -a v0.2.0 -m "Novidades: ..."   # a mensagem vira as notas da release
+#   git push origin v0.2.0
+#
+# Se a release já existir (criada pela página de Releases, com notas escritas lá), as
+# notas dela são mantidas e só os instaladores são anexados. Se não existir, ela é criada
+# com as notas da tag anotada ou, na falta delas, com a lista de commits desde a tag
+# anterior.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag já existente para (re)gerar os instaladores, ex.: v0.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            platform: --mac
+            files: release/*.dmg
+          - name: Windows
+            os: windows-latest
+            platform: --win
+            files: release/*.exe
+          - name: Linux
+            os: ubuntu-latest
+            platform: --linux
+            files: release/*.AppImage
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # O nome e a versão dos instaladores vêm do package.json; a tag manda.
+      - name: Versão a partir da tag
+        run: |
+          VERSION="${TAG#v}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          echo "Versão: $VERSION"
+
+      - name: Dependências
+        run: npm ci
+
+      - name: Build do Next e servidor standalone
+        run: |
+          npx next build
+          npm run pack:server
+
+      - name: Instalador
+        run: npx electron-builder ${{ matrix.platform }} --publish never
+        env:
+          # Sem certificado: não tenta assinar com o que houver no runner.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    name: Publicar na release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      # O checkout traz a tag "leve"; a mensagem da tag anotada precisa ser buscada.
+      - name: Tags completas
+        run: git fetch --force --tags origin
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: installer-*
+          merge-multiple: true
+
+      - name: Notas da release
+        run: bash .github/scripts/release-notes.sh "$TAG" dist > notes.md && cat notes.md
+
+      - name: Criar ou atualizar a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release já existe: mantendo as notas e anexando os instaladores."
+            gh release upload "$TAG" dist/* --clobber
+          else
+            PRERELEASE=""
+            case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
+            gh release create "$TAG" dist/* --title "CA Planner ${TAG#v}" --notes-file notes.md --verify-tag $PRERELEASE
+          fi
