@@ -57,6 +57,7 @@ npm run electron:dev   # desktop em desenvolvimento (sobe o next dev e abre a ja
 npm run electron       # desktop autônomo: next build + servidor embutido
 npm run build && npm start   # web em produção
 npm run dist           # empacota o app do macOS (.dmg em release/)
+npm run dist:win       # empacota o app do Windows (instalador .exe em release/)
 ```
 
 ### App de desktop empacotado
@@ -74,6 +75,11 @@ Sem `.env` ao lado, o app guarda tudo em
 banco novo nasce vazio — para levar o histórico desta pasta, copie os dois arquivos de
 `data/` para lá com o app fechado. As migrações pendentes são aplicadas na abertura, sem
 o CLI do Prisma (ver `electron/migrate.cjs`).
+
+No Windows, `npm run dist:win` gera `release/CA Planner-Setup-<versão>-x64.exe`. O instalador
+é por usuário (não pede administrador) e instala em `%LOCALAPPDATA%\Programs\ca-planner`. Os
+dados ficam em `%APPDATA%\CA Planner\`. Também sai sem assinatura: o SmartScreen pode
+avisar ao abrir o instalador.
 
 ### Importar os JSON da skill
 

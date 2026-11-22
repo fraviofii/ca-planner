@@ -21,7 +21,8 @@
     "check:plan": "tsx scripts/check-plan.ts",
     "postinstall": "prisma generate",
     "pack:server": "node scripts/pack-server.mjs",
-    "dist": "next build && npm run pack:server && electron-builder --mac"
+    "dist": "next build && npm run pack:server && electron-builder --mac",
+    "dist:win": "next build && npm run pack:server && electron-builder --win"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -99,6 +100,19 @@
     },
     "dmg": {
       "title": "CA Planner ${version}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "artifactName": "CA Planner-Setup-${version}-${arch}.${ext}"
     }
   }
 }
